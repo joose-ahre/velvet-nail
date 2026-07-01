@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Velvet Nails</title>
+  <link rel="stylesheet" href="estilo.css" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav-shell">
+      <a class="nav-logo" href="#inicio">Velvet <span>Nails</span></a>
+
+      <div class="nav-links">
+        <a href="#servicios">Servicios</a>
+        <a href="#turnos">Reservar</a>
+        <a href="#mis-turnos">Mis turnos</a>
+        <a href="#adminPanel" class="admin-only">Dueño</a>
+      </div>
+
+      <div class="nav-actions">
+        <button class="btn-ghost" id="viewClientBtn" type="button">Cliente</button>
+        <button class="btn-ghost" id="viewAdminBtn" type="button">Dueño</button>
+        <button class="btn-primary compact" id="loginButton" type="button">Iniciar sesión</button>
+        <div id="userBadge" class="user-badge" hidden>
+          <span id="userName"></span>
+          <button class="btn-ghost" id="logoutButton" type="button">Salir</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main id="inicio">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Studio de uñas y turnos online</p>
+        <h1>Velvet Nails</h1>
+        <p>Reservá tu servicio, elegí horario y consultá tus turnos desde un solo lugar.</p>
+        <div class="hero-actions">
+          <a class="btn-primary link-button" href="#turnos">Reservar turno</a>
+          <a class="btn-ghost link-button" href="#servicios">Ver servicios</a>
+        </div>
+      </div>
+
+      <div class="hero-panel">
+        <div><strong id="heroServiceCount">6</strong><span>servicios</span></div>
+        <div><strong>9 a 18</strong><span>horarios</span></div>
+        <div><strong>Online</strong><span>reservas</span></div>
+      </div>
+    </section>
+
+    <section id="servicios" class="section">
+      <div class="section-heading">
+        <p class="eyebrow">Carta de servicios</p>
+        <h2>Elegí el tratamiento ideal</h2>
+      </div>
+      <div id="servicesGrid" class="services-grid"></div>
+    </section>
+
+    <section id="turnos" class="section split-section client-view">
+      <div class="section-heading">
+        <p class="eyebrow">Vista cliente</p>
+        <h2>Reservar turno</h2>
+        <p>Completá tus datos, seleccioná servicio, fecha y horario disponible.</p>
+      </div>
+
+      <form id="bookingForm" class="form-card">
+        <label>Nombre<input id="bookName" autocomplete="name" placeholder="Tu nombre" /></label>
+        <label>Teléfono<input id="bookPhone" autocomplete="tel" placeholder="Tu teléfono" /></label>
+        <label>Servicio<select id="bookService"></select></label>
+        <div class="form-row">
+          <label>Fecha<input type="date" id="bookDate" /></label>
+          <label>Hora<select id="bookTime"></select></label>
+        </div>
+        <p id="bookError" class="form-error" role="alert"></p>
+        <button class="btn-primary" type="submit">Confirmar turno</button>
+      </form>
+    </section>
+
+    <section id="mis-turnos" class="section client-view">
+      <div class="section-heading">
+        <p class="eyebrow">Vista cliente</p>
+        <h2>Mis turnos</h2>
+      </div>
+      <div id="misTurnos" class="booking-list"></div>
+    </section>
+
+    <section id="adminPanel" class="section admin-view" hidden>
+      <div class="section-heading">
+        <p class="eyebrow">Vista dueño / admin</p>
+        <h2>Panel del estudio</h2>
+        <p>Controlá reservas, estados y servicios disponibles para tus clientas.</p>
+      </div>
+
+      <div class="admin-stats">
+        <article><span>Turnos totales</span><strong id="statTotal">0</strong></article>
+        <article><span>Confirmados</span><strong id="statConfirmed">0</strong></article>
+        <article><span>Ingresos estimados</span><strong id="statRevenue">$0</strong></article>
+      </div>
+
+      <div class="admin-layout">
+        <div class="panel-card">
+          <div class="panel-title">
+            <h3>Reservas</h3>
+            <select id="adminFilter">
+              <option value="all">Todas</option>
+              <option value="confirmada">Confirmadas</option>
+              <option value="realizada">Realizadas</option>
+              <option value="cancelada">Canceladas</option>
+            </select>
+          </div>
+          <div id="adminBookings" class="booking-list"></div>
+        </div>
+
+        <form id="serviceForm" class="panel-card">
+          <h3>Agregar servicio</h3>
+          <label>Nombre<input id="serviceName" placeholder="Ej: Nail art" /></label>
+          <div class="form-row">
+            <label>Precio<input id="servicePrice" type="number" min="0" placeholder="8500" /></label>
+            <label>Duración<input id="serviceDuration" placeholder="60 min" /></label>
+          </div>
+          <label>Descripción<textarea id="serviceDescription" rows="3" placeholder="Detalle breve del servicio"></textarea></label>
+          <p id="serviceError" class="form-error" role="alert"></p>
+          <button class="btn-primary" type="submit">Guardar servicio</button>
+          <div id="adminServices" class="service-admin-list"></div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div id="authOverlay" class="overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <button class="modal-close" id="closeModalButton" type="button" aria-label="Cerrar">x</button>
+      <h2 id="authTitle">Ingresar a Velvet Nails</h2>
+      <p class="modal-note">Para probar como dueño usá: owner@velvetnails.com / admin123</p>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" type="button" data-auth-tab="login">Login</button>
+        <button class="auth-tab" type="button" data-auth-tab="register">Registro</button>
+      </div>
+
+      <form id="loginForm" class="auth-form active">
+        <input id="loginEmail" type="email" placeholder="Email" autocomplete="email" />
+        <input id="loginPass" type="password" placeholder="Contraseña" autocomplete="current-password" />
+        <p id="loginError" class="form-error" role="alert"></p>
+        <button class="btn-primary" type="submit">Entrar</button>
+      </form>
+
+      <form id="registerForm" class="auth-form">
+        <input id="regName" placeholder="Nombre" autocomplete="given-name" />
+        <input id="regLastname" placeholder="Apellido" autocomplete="family-name" />
+        <input id="regEmail" type="email" placeholder="Email" autocomplete="email" />
+        <input id="regPass" type="password" placeholder="Contraseña" autocomplete="new-password" />
+        <input id="regPhone" placeholder="Teléfono" autocomplete="tel" />
+        <p id="regError" class="form-error" role="alert"></p>
+        <button class="btn-primary" type="submit">Crear cuenta</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="js.js"></script>
+</body>
+</html>
