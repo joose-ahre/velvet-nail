@@ -2,6 +2,8 @@
 
 Sitio de reservas migrado a Next.js con App Router. Incluye catálogo de servicios, registro e inicio de sesión de demostración, reservas y panel de administración.
 
+**Sitio en producción:** [Abrir Velvet Nails](https://joose-ahre-velvet-nail.vercel.app)
+
 ## Desarrollo
 
 ```bash
