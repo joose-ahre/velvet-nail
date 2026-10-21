@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "firebase/auth";
-import { collection, doc, getDoc, onSnapshot, query, runTransaction, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, runTransaction, where } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
 const STORAGE = {
@@ -136,6 +136,21 @@ function durationInMinutes(serviceOrDuration) {
   return Math.max(30, Number.parseInt(duration, 10) || 60);
 }
 
+function formatTimeFromMinutes(minutes) {
+  const hour = String(Math.floor(minutes / 60)).padStart(2, "0");
+  const minute = String(minutes % 60).padStart(2, "0");
+  return `${hour}:${minute}`;
+}
+
+function slotIdsForBooking(date, time, serviceOrDuration) {
+  const start = minutesFromTime(time);
+  if (start === null) return [];
+  const duration = Math.ceil(durationInMinutes(serviceOrDuration) / 30) * 30;
+  return Array.from({ length: duration / 30 }, (_, index) => (
+    `${date}_${formatTimeFromMinutes(start + index * 30)}`
+  ));
+}
+
 function isSlotAvailable({ date, time, service, bookings, services }) {
   const start = minutesFromTime(time);
   if (start === null || start < OPENING_MINUTES) return false;
@@ -181,6 +196,7 @@ export default function BookingApp() {
   const [bookingDate, setBookingDate] = useState("");
   const [bookingTime, setBookingTime] = useState("");
   const [bookingServiceId, setBookingServiceId] = useState("");
+  const [occupiedSlots, setOccupiedSlots] = useState(() => new Set());
   const [modal, setModal] = useState(false);
   const [tab, setTab] = useState("login");
   const [view, setView] = useState("client");
@@ -226,6 +242,17 @@ export default function BookingApp() {
   }, [user]);
 
   useEffect(() => {
+    if (!user || !bookingDate) {
+      setOccupiedSlots(new Set());
+      return undefined;
+    }
+    const slotsQuery = query(collection(db, "slots"), where("date", "==", bookingDate));
+    return onSnapshot(slotsQuery, (snapshot) => {
+      setOccupiedSlots(new Set(snapshot.docs.map((item) => item.id)));
+    }, () => setOccupiedSlots(new Set()));
+  }, [user, bookingDate]);
+
+  useEffect(() => {
     if (!notice) return undefined;
     const timeout = window.setTimeout(() => setNotice(""), 2800);
     return () => window.clearTimeout(timeout);
@@ -249,8 +276,9 @@ export default function BookingApp() {
       service: selectedService,
       bookings,
       services,
-    })),
-    [bookingDate, bookings, selectedService, services],
+    }) && !slotIdsForBooking(bookingDate, time, selectedService)
+      .some((slotId) => occupiedSlots.has(slotId))),
+    [bookingDate, bookings, occupiedSlots, selectedService, services],
   );
   const visibleBookings = useMemo(() => {
     const filtered = filter === "all"
@@ -260,10 +288,56 @@ export default function BookingApp() {
   }, [bookings, filter]);
 
   const updateStatus = async (id, status) => {
+    const booking = bookings.find((item) => item.id === id);
+    if (!booking) return;
+
     try {
-      await updateDoc(doc(db, "bookings", id), { status });
-    } catch {
-      setBookingError("No se pudo actualizar el turno.");
+      await runTransaction(db, async (transaction) => {
+        const bookingRef = doc(db, "bookings", id);
+        const bookingSnapshot = await transaction.get(bookingRef);
+        if (!bookingSnapshot.exists()) throw new Error("booking-missing");
+
+        const currentBooking = { id, ...bookingSnapshot.data() };
+        const slotIds = slotIdsForBooking(
+          currentBooking.date,
+          currentBooking.time,
+          currentBooking.duration,
+        );
+        const slotRefs = slotIds.map((slotId) => doc(db, "slots", slotId));
+        const slotSnapshots = [];
+        for (const slotRef of slotRefs) {
+          slotSnapshots.push(await transaction.get(slotRef));
+        }
+
+        if (status === "cancelada") {
+          transaction.update(bookingRef, { status });
+          slotSnapshots.forEach((slotSnapshot, index) => {
+            if (slotSnapshot.exists() && slotSnapshot.data().bookingId === id) {
+              transaction.delete(slotRefs[index]);
+            }
+          });
+          return;
+        }
+
+        if (status === "confirmada" && currentBooking.status === "cancelada") {
+          if (slotSnapshots.some((slotSnapshot) => slotSnapshot.exists())) {
+            throw new Error("slot-taken");
+          }
+          slotRefs.forEach((slotRef, index) => {
+            transaction.set(slotRef, {
+              bookingId: id,
+              ownerUid: currentBooking.userId,
+              date: currentBooking.date,
+              time: slotIds[index].slice(currentBooking.date.length + 1),
+            });
+          });
+        }
+        transaction.update(bookingRef, { status });
+      });
+    } catch (error) {
+      setBookingError(error.message === "slot-taken"
+        ? "Ese horario ya no está disponible."
+        : "No se pudo actualizar el turno.");
     }
   };
 
@@ -309,15 +383,27 @@ export default function BookingApp() {
 
     try {
       const bookingRef = doc(collection(db, "bookings"));
+      const slotRefs = slotIdsForBooking(date, time, service)
+        .map((slotId) => doc(db, "slots", slotId));
       await runTransaction(db, async (transaction) => {
-        const existing = await transaction.get(query(collection(db, "bookings"), where("date", "==", date)));
-        const currentBookings = existing.docs.map((item) => ({ id: item.id, ...item.data() }));
-        if (!isSlotAvailable({ date, time, service, bookings: currentBookings, services })) throw new Error("slot-taken");
+        const slotSnapshots = [];
+        for (const slotRef of slotRefs) {
+          slotSnapshots.push(await transaction.get(slotRef));
+        }
+        if (slotSnapshots.some((slotSnapshot) => slotSnapshot.exists())) throw new Error("slot-taken");
         transaction.set(bookingRef, {
           userId: user.uid, user: user.email, name, phone,
           serviceId: service.id, serviceName: service.name,
           price: service.price, duration: service.duration,
           date, time, status: "confirmada", createdAt: new Date().toISOString(),
+        });
+        slotRefs.forEach((slotRef, index) => {
+          transaction.set(slotRef, {
+            bookingId: bookingRef.id,
+            ownerUid: user.uid,
+            date,
+            time: slotIdsForBooking(date, time, service)[index].slice(date.length + 1),
+          });
         });
       });
     } catch (error) {

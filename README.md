@@ -15,7 +15,7 @@ Abrí <http://localhost:3000> en el navegador.
 
 Las cuentas y las reservas usan Firebase Auth y Firestore. Activá Email/Password en Firebase Authentication, creá la base de Firestore y publicá [firestore.rules](./firestore.rules). Para habilitar a la dueña, creá manualmente un documento `admins/{uid}` con `{ "role": "admin" }`, usando el UID de su cuenta Firebase. El rol se valida en Firestore y nunca desde `localStorage`.
 
-La configuración del proyecto ya incluye los datos públicos del proyecto `turnero-c651b`. Para otro proyecto, copiá `.env.example` a `.env.local` y completá las variables `NEXT_PUBLIC_FIREBASE_*`. Los servicios siguen pudiendo personalizarse localmente desde el panel; las reservas nuevas son compartidas y sincronizadas en tiempo real entre navegadores.
+La configuración del proyecto ya incluye los datos públicos del proyecto `turnero-c651b`. Para otro proyecto, copiá `.env.example` a `.env.local` y completá las variables `NEXT_PUBLIC_FIREBASE_*`. Los servicios siguen pudiendo personalizarse localmente desde el panel; las reservas nuevas son compartidas y sincronizadas en tiempo real entre navegadores. La disponibilidad se coordina mediante documentos `slots/{fecha_hora}` sin datos personales, creados dentro de la misma transacción que la reserva.
 
 ## Comandos
 
