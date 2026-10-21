@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "firebase/auth";
+import { collection, doc, getDoc, onSnapshot, query, runTransaction, updateDoc, where } from "firebase/firestore";
+import { auth, db } from "./firebase";
 
 const STORAGE = {
   services: "vn_services",
-  bookings: "vn_bookings",
-  users: "vn_users",
-  session: "vn_session",
 };
 
 const SERVICES = [
@@ -53,13 +53,6 @@ const SERVICES = [
     description: "Retiro seguro del producto y cuidado de la uña.",
   },
 ];
-
-const OWNER = {
-  name: "Dueña",
-  email: "owner@velvetnails.com",
-  password: "admin123",
-  role: "admin",
-};
 
 const HOURS = Array.from({ length: 18 }, (_, index) => {
   const minutes = 9 * 60 + index * 30;
@@ -113,31 +106,6 @@ function normalizeServiceList(value) {
     }));
 }
 
-function normalizeUser(value) {
-  if (!value || typeof value !== "object" || typeof value.email !== "string") return null;
-
-  const email = value.email.trim().toLowerCase();
-  const firstName = String(value.name || "").trim();
-  const lastName = String(value.last || "").trim();
-
-  return {
-    name: [firstName, lastName].filter(Boolean).join(" ") || email,
-    email,
-    password: String(value.password ?? value.pass ?? ""),
-    phone: String(value.phone || ""),
-    role: value.role === "admin" ? "admin" : "client",
-  };
-}
-
-function normalizeUserList(value) {
-  const storedUsers = Array.isArray(value)
-    ? value.map(normalizeUser).filter(Boolean)
-    : [];
-  const ownerExists = storedUsers.some((user) => user.email === OWNER.email);
-
-  return ownerExists ? storedUsers : [...storedUsers, OWNER];
-}
-
 function normalizeBookingList(value) {
   if (!Array.isArray(value)) return [];
 
@@ -153,13 +121,6 @@ function normalizeBookingList(value) {
         ? booking.status
         : "confirmada",
     }));
-}
-
-function publicUser(user) {
-  if (!user) return null;
-  const safeUser = { ...user };
-  delete safeUser.password;
-  return safeUser;
 }
 
 function minutesFromTime(time) {
@@ -214,7 +175,6 @@ function newId() {
 export default function BookingApp() {
   const [services, setServices] = useState(SERVICES);
   const [bookings, setBookings] = useState([]);
-  const [users, setUsers] = useState([OWNER]);
   const [user, setUser] = useState(null);
   const [hydrated, setHydrated] = useState(false);
   const [minimumDate, setMinimumDate] = useState("");
@@ -231,19 +191,25 @@ export default function BookingApp() {
 
   useEffect(() => {
     const loadedServices = normalizeServiceList(readStoredValue(STORAGE.services, SERVICES));
-    const loadedBookings = normalizeBookingList(readStoredValue(STORAGE.bookings, []));
-    const loadedUsers = normalizeUserList(readStoredValue(STORAGE.users, []));
-    const savedSession = normalizeUser(readStoredValue(STORAGE.session, null));
-    const matchingUser = savedSession
-      ? loadedUsers.find((item) => item.email === savedSession.email) || savedSession
-      : null;
-
     setServices(loadedServices);
-    setBookings(loadedBookings);
-    setUsers(loadedUsers);
-    setUser(matchingUser);
     setMinimumDate(todayLocal());
     setHydrated(true);
+
+    return onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!firebaseUser) {
+        setUser(null);
+        setBookings([]);
+        return;
+      }
+      const adminProfile = await getDoc(doc(db, "admins", firebaseUser.uid));
+      setUser({
+        name: firebaseUser.displayName || firebaseUser.email,
+        email: firebaseUser.email.toLowerCase(),
+        phone: "",
+        role: adminProfile.exists() && adminProfile.data().role === "admin" ? "admin" : "client",
+        uid: firebaseUser.uid,
+      });
+    });
   }, []);
 
   useEffect(() => {
@@ -252,26 +218,12 @@ export default function BookingApp() {
   }, [hydrated, services]);
 
   useEffect(() => {
-    if (!hydrated) return;
-    writeStoredValue(STORAGE.bookings, bookings);
-  }, [hydrated, bookings]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    writeStoredValue(STORAGE.users, users);
-  }, [hydrated, users]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    if (user) writeStoredValue(STORAGE.session, publicUser(user));
-    else {
-      try {
-        window.localStorage.removeItem(STORAGE.session);
-      } catch {
-        // Session cleanup is best effort when browser storage is unavailable.
-      }
-    }
-  }, [hydrated, user]);
+    if (!user) return undefined;
+    const bookingsQuery = query(collection(db, "bookings"), ...(user.role === "admin" ? [] : [where("userId", "==", user.uid)]));
+    return onSnapshot(bookingsQuery, (snapshot) => {
+      setBookings(normalizeBookingList(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
+    }, () => setBookingError("No se pudieron cargar los turnos."));
+  }, [user]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -307,10 +259,12 @@ export default function BookingApp() {
     return [...filtered].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
   }, [bookings, filter]);
 
-  const updateStatus = (id, status) => {
-    setBookings((all) => all.map((booking) =>
-      booking.id === id ? { ...booking, status } : booking,
-    ));
+  const updateStatus = async (id, status) => {
+    try {
+      await updateDoc(doc(db, "bookings", id), { status });
+    } catch {
+      setBookingError("No se pudo actualizar el turno.");
+    }
   };
 
   const openAuth = (nextTab = "login") => {
@@ -319,7 +273,7 @@ export default function BookingApp() {
     setModal(true);
   };
 
-  const book = (event) => {
+  const book = async (event) => {
     event.preventDefault();
     setBookingError("");
 
@@ -353,20 +307,24 @@ export default function BookingApp() {
       return;
     }
 
-    setBookings((all) => [...all, {
-      id: newId(),
-      user: user.email,
-      name,
-      phone,
-      serviceId: service.id,
-      serviceName: service.name,
-      price: service.price,
-      duration: service.duration,
-      date,
-      time,
-      status: "confirmada",
-      createdAt: new Date().toISOString(),
-    }]);
+    try {
+      const bookingRef = doc(collection(db, "bookings"));
+      await runTransaction(db, async (transaction) => {
+        const existing = await transaction.get(query(collection(db, "bookings"), where("date", "==", date)));
+        const currentBookings = existing.docs.map((item) => ({ id: item.id, ...item.data() }));
+        if (!isSlotAvailable({ date, time, service, bookings: currentBookings, services })) throw new Error("slot-taken");
+        transaction.set(bookingRef, {
+          userId: user.uid, user: user.email, name, phone,
+          serviceId: service.id, serviceName: service.name,
+          price: service.price, duration: service.duration,
+          date, time, status: "confirmada", createdAt: new Date().toISOString(),
+        });
+      });
+    } catch (error) {
+      setBookingError(error.message === "slot-taken" ? "Ese horario ya no está disponible. Elegí otro turno." : "No se pudo guardar el turno. Intentá nuevamente.");
+      setBookingTime("");
+      return;
+    }
 
     event.currentTarget.reset();
     setBookingServiceId("");
@@ -375,27 +333,23 @@ export default function BookingApp() {
     setNotice("¡Tu turno quedó confirmado!");
   };
 
-  const login = (event) => {
+  const login = async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const email = String(data.get("email") || "").trim().toLowerCase();
     const password = String(data.get("password") || "");
-    const found = users.find((item) => item.email === email && item.password === password);
-
-    if (!found) {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      setBookingError("");
+      setAuthError("");
+      setModal(false);
+      event.currentTarget.reset();
+    } catch {
       setAuthError("Email o contraseña incorrectos.");
-      return;
     }
-
-    setUser(found);
-    setBookingError("");
-    setAuthError("");
-    setModal(false);
-    event.currentTarget.reset();
-    if (found.role === "admin") setView("admin");
   };
 
-  const register = (event) => {
+  const register = async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const firstName = String(data.get("name") || "").trim();
@@ -412,25 +366,17 @@ export default function BookingApp() {
       setAuthError("La contraseña debe tener al menos 6 caracteres.");
       return;
     }
-    if (users.some((item) => item.email === email)) {
-      setAuthError("Ese email ya está registrado.");
-      return;
+    try {
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(credential.user, { displayName: `${firstName} ${lastName}`.trim() });
+      setBookingError("");
+      setAuthError("");
+      setModal(false);
+      event.currentTarget.reset();
+      setNotice("¡Cuenta creada! Ya podés reservar.");
+    } catch {
+      setAuthError("No se pudo crear la cuenta. Verificá el email e intentá nuevamente.");
     }
-
-    const newUser = {
-      name: `${firstName} ${lastName}`.trim(),
-      email,
-      password,
-      phone,
-      role: "client",
-    };
-    setUsers((all) => [...all, newUser]);
-    setUser(newUser);
-    setBookingError("");
-    setAuthError("");
-    setModal(false);
-    event.currentTarget.reset();
-    setNotice("¡Cuenta creada! Ya podés reservar.");
   };
 
   const addService = (event) => {
@@ -493,8 +439,8 @@ export default function BookingApp() {
                 <span>{user.name}</span>
                 <button
                   className="btn-ghost small"
-                  onClick={() => {
-                    setUser(null);
+                  onClick={async () => {
+                    await signOut(auth);
                     setView("client");
                   }}
                   type="button"
@@ -726,7 +672,7 @@ export default function BookingApp() {
           <div className="modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
             <button className="modal-close" onClick={() => setModal(false)} aria-label="Cerrar" type="button">×</button>
             <h2 id="auth-title">Ingresar a Velvet Nails</h2>
-            <p className="modal-note">Para probar como dueña usá: owner@velvetnails.com / admin123</p>
+            <p className="modal-note">Las cuentas se validan de forma segura mediante Firebase Authentication.</p>
             <div className="auth-tabs" role="tablist" aria-label="Acceso a la cuenta">
               <button
                 className={tab === "login" ? "auth-tab active" : "auth-tab"}

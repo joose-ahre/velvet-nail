@@ -13,12 +13,9 @@ npm run dev
 
 Abrí <http://localhost:3000> en el navegador.
 
-## Acceso de demostración
+Las cuentas y las reservas usan Firebase Auth y Firestore. Activá Email/Password en Firebase Authentication, creá la base de Firestore y publicá [firestore.rules](./firestore.rules). Para habilitar a la dueña, creá manualmente un documento `admins/{uid}` con `{ "role": "admin" }`, usando el UID de su cuenta Firebase. El rol se valida en Firestore y nunca desde `localStorage`.
 
-- Email: `owner@velvetnails.com`
-- Contraseña: `admin123`
-
-Las cuentas, los servicios y las reservas se guardan en `localStorage` del navegador. La app conserva los datos locales de la versión anterior y adapta las cuentas que tenían el campo `pass`. Los datos no se comparten entre dispositivos ni funcionan como autenticación segura para producción.
+La configuración del proyecto ya incluye los datos públicos del proyecto `turnero-c651b`. Para otro proyecto, copiá `.env.example` a `.env.local` y completá las variables `NEXT_PUBLIC_FIREBASE_*`. Los servicios siguen pudiendo personalizarse localmente desde el panel; las reservas nuevas son compartidas y sincronizadas en tiempo real entre navegadores.
 
 ## Comandos
 
