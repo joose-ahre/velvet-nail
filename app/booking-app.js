@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { GoogleAuthProvider, onAuthStateChanged, signInWithRedirect, signOut } from "firebase/auth";
+import { GoogleAuthProvider, getRedirectResult, onAuthStateChanged, signInWithRedirect, signOut } from "firebase/auth";
 import { collection, doc, getDoc, onSnapshot, query, runTransaction, where } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
@@ -210,7 +210,7 @@ export default function BookingApp() {
     setMinimumDate(todayLocal());
     setHydrated(true);
 
-    return onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!firebaseUser) {
         setUser(null);
         setBookings([]);
@@ -225,6 +225,15 @@ export default function BookingApp() {
         uid: firebaseUser.uid,
       });
     });
+    getRedirectResult(auth).catch((error) => {
+      const messages = {
+        "auth/unauthorized-domain": "Agregá este dominio en Firebase Authentication → Settings → Authorized domains.",
+        "auth/operation-not-allowed": "El proveedor Google todavía no está habilitado en Firebase Authentication.",
+        "auth/popup-closed-by-user": "El acceso con Google fue cancelado.",
+      };
+      setAuthError(messages[error.code] || "Google no pudo completar el inicio de sesión.");
+    });
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
