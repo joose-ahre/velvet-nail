@@ -232,6 +232,7 @@ export default function BookingApp() {
         "auth/popup-closed-by-user": "El acceso con Google fue cancelado.",
       };
       setAuthError(messages[error.code] || "Google no pudo completar el inicio de sesión.");
+      setModal(true);
     });
     return unsubscribe;
   }, []);
@@ -433,6 +434,7 @@ export default function BookingApp() {
       setAuthError(error.code === "auth/operation-not-allowed"
         ? "Activá Google en Firebase Authentication → Sign-in method."
         : "No se pudo iniciar sesión con Google. Intentá nuevamente.");
+      setModal(true);
     }
   };
 
