@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "firebase/auth";
+import { GoogleAuthProvider, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, signOut, updateProfile } from "firebase/auth";
 import { collection, doc, getDoc, onSnapshot, query, runTransaction, where } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
@@ -435,6 +435,17 @@ export default function BookingApp() {
     }
   };
 
+  const loginWithGoogle = async () => {
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+      setBookingError("");
+      setAuthError("");
+      setModal(false);
+    } catch {
+      setAuthError("No se pudo iniciar sesión con Google. Intentá nuevamente.");
+    }
+  };
+
   const register = async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -785,6 +796,9 @@ export default function BookingApp() {
                 <label>Contraseña<input name="password" type="password" autoComplete="current-password" placeholder="Contraseña" /></label>
                 <p className="form-error" role="alert">{authError}</p>
                 <button className="btn-primary" type="submit">Entrar</button>
+                <button className="btn-ghost" type="button" onClick={loginWithGoogle}>
+                  Continuar con Google
+                </button>
               </form>
             ) : (
               <form className="auth-form active" onSubmit={register}>
