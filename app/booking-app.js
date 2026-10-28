@@ -231,7 +231,7 @@ export default function BookingApp() {
         "auth/operation-not-allowed": "El proveedor Google todavía no está habilitado en Firebase Authentication.",
         "auth/popup-closed-by-user": "El acceso con Google fue cancelado.",
       };
-      setAuthError(messages[error.code] || "Google no pudo completar el inicio de sesión.");
+      setAuthError(messages[error.code] || `Error de Google: ${error.code || "desconocido"}`);
       setModal(true);
     });
     return unsubscribe;
@@ -431,9 +431,13 @@ export default function BookingApp() {
     try {
       await signInWithRedirect(auth, new GoogleAuthProvider());
     } catch (error) {
-      setAuthError(error.code === "auth/operation-not-allowed"
-        ? "Activá Google en Firebase Authentication → Sign-in method."
-        : "No se pudo iniciar sesión con Google. Intentá nuevamente.");
+      const messages = {
+        "auth/operation-not-allowed": "Activá Google en Firebase Authentication → Sign-in method.",
+        "auth/unauthorized-domain": "Agregá el dominio de Vercel en Firebase Authentication → Settings → Authorized domains.",
+        "auth/invalid-api-key": "La configuración de Firebase tiene una API key inválida.",
+        "auth/network-request-failed": "Falló la conexión con Firebase. Revisá tu conexión e intentá nuevamente.",
+      };
+      setAuthError(messages[error.code] || `Error de Google: ${error.code || "desconocido"}`);
       setModal(true);
     }
   };
