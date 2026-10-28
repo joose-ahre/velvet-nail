@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { GoogleAuthProvider, getRedirectResult, onAuthStateChanged, signInWithRedirect, signOut } from "firebase/auth";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { collection, doc, getDoc, onSnapshot, query, runTransaction, where } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
@@ -203,6 +203,8 @@ export default function BookingApp() {
   const [notice, setNotice] = useState("");
   const [bookingError, setBookingError] = useState("");
   const [authError, setAuthError] = useState("");
+  const [scrollTarget, setScrollTarget] = useState("");
+  const loginRequested = useRef(false);
 
   useEffect(() => {
     const loadedServices = normalizeServiceList(readStoredValue(STORAGE.services, SERVICES));
@@ -216,26 +218,37 @@ export default function BookingApp() {
         setBookings([]);
         return;
       }
-      const adminProfile = await getDoc(doc(db, "admins", firebaseUser.uid));
+      let role = "client";
+      try {
+        const adminProfile = await getDoc(doc(db, "admins", firebaseUser.uid));
+        if (adminProfile.exists() && adminProfile.data().role === "admin") role = "admin";
+      } catch {
+        // Without access to the admin profile the account keeps the client role.
+      }
       setUser({
         name: firebaseUser.displayName || firebaseUser.email,
         email: firebaseUser.email.toLowerCase(),
         phone: "",
-        role: adminProfile.exists() && adminProfile.data().role === "admin" ? "admin" : "client",
+        role,
         uid: firebaseUser.uid,
       });
-    });
-    getRedirectResult(auth).catch((error) => {
-      const messages = {
-        "auth/unauthorized-domain": "Agregá este dominio en Firebase Authentication → Settings → Authorized domains.",
-        "auth/operation-not-allowed": "El proveedor Google todavía no está habilitado en Firebase Authentication.",
-        "auth/popup-closed-by-user": "El acceso con Google fue cancelado.",
-      };
-      setAuthError(messages[error.code] || `Error de Google: ${error.code || "desconocido"}`);
-      setModal(true);
+
+      if (loginRequested.current) {
+        loginRequested.current = false;
+        setView(role === "admin" ? "admin" : "client");
+        setScrollTarget(role === "admin" ? "admin" : "turnos");
+      }
     });
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!scrollTarget) return;
+    const section = document.getElementById(scrollTarget);
+    if (!section) return;
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    setScrollTarget("");
+  }, [scrollTarget, user, view]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -428,17 +441,23 @@ export default function BookingApp() {
   };
 
   const loginWithGoogle = async () => {
+    setAuthError("");
+    loginRequested.current = true;
     try {
-      await signInWithRedirect(auth, new GoogleAuthProvider());
+      await signInWithPopup(auth, new GoogleAuthProvider());
+      setBookingError("");
+      setModal(false);
     } catch (error) {
+      loginRequested.current = false;
+      if (["auth/popup-closed-by-user", "auth/cancelled-popup-request"].includes(error.code)) return;
       const messages = {
+        "auth/popup-blocked": "El navegador bloqueó la ventana de Google. Permití las ventanas emergentes e intentá nuevamente.",
         "auth/operation-not-allowed": "Activá Google en Firebase Authentication → Sign-in method.",
         "auth/unauthorized-domain": "Agregá el dominio de Vercel en Firebase Authentication → Settings → Authorized domains.",
         "auth/invalid-api-key": "La configuración de Firebase tiene una API key inválida.",
         "auth/network-request-failed": "Falló la conexión con Firebase. Revisá tu conexión e intentá nuevamente.",
       };
       setAuthError(messages[error.code] || `Error de Google: ${error.code || "desconocido"}`);
-      setModal(true);
     }
   };
 
