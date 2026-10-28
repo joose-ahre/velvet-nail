@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { GoogleAuthProvider, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, signOut, updateProfile } from "firebase/auth";
+import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { collection, doc, getDoc, onSnapshot, query, runTransaction, where } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
@@ -198,7 +198,6 @@ export default function BookingApp() {
   const [bookingServiceId, setBookingServiceId] = useState("");
   const [occupiedSlots, setOccupiedSlots] = useState(() => new Set());
   const [modal, setModal] = useState(false);
-  const [tab, setTab] = useState("login");
   const [view, setView] = useState("client");
   const [filter, setFilter] = useState("all");
   const [notice, setNotice] = useState("");
@@ -341,8 +340,7 @@ export default function BookingApp() {
     }
   };
 
-  const openAuth = (nextTab = "login") => {
-    setTab(nextTab);
+  const openAuth = () => {
     setAuthError("");
     setModal(true);
   };
@@ -419,22 +417,6 @@ export default function BookingApp() {
     setNotice("¡Tu turno quedó confirmado!");
   };
 
-  const login = async (event) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const email = String(data.get("email") || "").trim().toLowerCase();
-    const password = String(data.get("password") || "");
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      setBookingError("");
-      setAuthError("");
-      setModal(false);
-      event.currentTarget.reset();
-    } catch {
-      setAuthError("Email o contraseña incorrectos.");
-    }
-  };
-
   const loginWithGoogle = async () => {
     try {
       await signInWithPopup(auth, new GoogleAuthProvider());
@@ -443,36 +425,6 @@ export default function BookingApp() {
       setModal(false);
     } catch {
       setAuthError("No se pudo iniciar sesión con Google. Intentá nuevamente.");
-    }
-  };
-
-  const register = async (event) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const firstName = String(data.get("name") || "").trim();
-    const lastName = String(data.get("last") || "").trim();
-    const email = String(data.get("email") || "").trim().toLowerCase();
-    const password = String(data.get("password") || "");
-    const phone = String(data.get("phone") || "").trim();
-
-    if (!firstName || !email || !password || !phone) {
-      setAuthError("Completá todos los campos.");
-      return;
-    }
-    if (password.length < 6) {
-      setAuthError("La contraseña debe tener al menos 6 caracteres.");
-      return;
-    }
-    try {
-      const credential = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(credential.user, { displayName: `${firstName} ${lastName}`.trim() });
-      setBookingError("");
-      setAuthError("");
-      setModal(false);
-      event.currentTarget.reset();
-      setNotice("¡Cuenta creada! Ya podés reservar.");
-    } catch {
-      setAuthError("No se pudo crear la cuenta. Verificá el email e intentá nuevamente.");
     }
   };
 
@@ -769,48 +721,13 @@ export default function BookingApp() {
           <div className="modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
             <button className="modal-close" onClick={() => setModal(false)} aria-label="Cerrar" type="button">×</button>
             <h2 id="auth-title">Ingresar a Velvet Nails</h2>
-            <p className="modal-note">Las cuentas se validan de forma segura mediante Firebase Authentication.</p>
-            <div className="auth-tabs" role="tablist" aria-label="Acceso a la cuenta">
-              <button
-                className={tab === "login" ? "auth-tab active" : "auth-tab"}
-                onClick={() => { setTab("login"); setAuthError(""); }}
-                type="button"
-                role="tab"
-                aria-selected={tab === "login"}
-              >
-                Iniciar sesión
-              </button>
-              <button
-                className={tab === "register" ? "auth-tab active" : "auth-tab"}
-                onClick={() => { setTab("register"); setAuthError(""); }}
-                type="button"
-                role="tab"
-                aria-selected={tab === "register"}
-              >
-                Registro
+            <p className="modal-note">Ingresá o registrate de forma segura con tu cuenta de Google.</p>
+            <div className="auth-form active">
+              <p className="form-error" role="alert">{authError}</p>
+              <button className="btn-primary" type="button" onClick={loginWithGoogle}>
+                Continuar con Google
               </button>
             </div>
-            {tab === "login" ? (
-              <form className="auth-form active" onSubmit={login}>
-                <label>Email<input name="email" type="email" autoComplete="email" placeholder="Email" /></label>
-                <label>Contraseña<input name="password" type="password" autoComplete="current-password" placeholder="Contraseña" /></label>
-                <p className="form-error" role="alert">{authError}</p>
-                <button className="btn-primary" type="submit">Entrar</button>
-                <button className="btn-ghost" type="button" onClick={loginWithGoogle}>
-                  Continuar con Google
-                </button>
-              </form>
-            ) : (
-              <form className="auth-form active" onSubmit={register}>
-                <label>Nombre<input name="name" autoComplete="given-name" placeholder="Nombre" /></label>
-                <label>Apellido<input name="last" autoComplete="family-name" placeholder="Apellido" /></label>
-                <label>Email<input name="email" type="email" autoComplete="email" placeholder="Email" /></label>
-                <label>Contraseña<input name="password" type="password" autoComplete="new-password" placeholder="Contraseña" /></label>
-                <label>Teléfono<input name="phone" autoComplete="tel" placeholder="Teléfono" /></label>
-                <p className="form-error" role="alert">{authError}</p>
-                <button className="btn-primary" type="submit">Crear cuenta</button>
-              </form>
-            )}
           </div>
         </div>
       )}
