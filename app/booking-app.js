@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import { GoogleAuthProvider, onAuthStateChanged, signInWithRedirect, signOut } from "firebase/auth";
 import { collection, doc, getDoc, onSnapshot, query, runTransaction, where } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
@@ -419,12 +419,11 @@ export default function BookingApp() {
 
   const loginWithGoogle = async () => {
     try {
-      await signInWithPopup(auth, new GoogleAuthProvider());
-      setBookingError("");
-      setAuthError("");
-      setModal(false);
-    } catch {
-      setAuthError("No se pudo iniciar sesión con Google. Intentá nuevamente.");
+      await signInWithRedirect(auth, new GoogleAuthProvider());
+    } catch (error) {
+      setAuthError(error.code === "auth/operation-not-allowed"
+        ? "Activá Google en Firebase Authentication → Sign-in method."
+        : "No se pudo iniciar sesión con Google. Intentá nuevamente.");
     }
   };
 
